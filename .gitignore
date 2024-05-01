@@ -3,6 +3,7 @@ Makefile.local
 *.swp
 *tags
 *~
+.vscode/
 
 # OS X
 ####################
