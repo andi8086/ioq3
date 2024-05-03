@@ -2133,6 +2133,7 @@ ifeq ($(ARCH),x86_64)
     $(B)/client/ftola.o
 endif
 
+ifeq ($(USE_GL4ES),1)
 ifeq ($(USE_INTERNAL_GL4ES),1)
   # Don't build this file, it has too many local variables and causes the emscripten build to throw an error on load.
   # We don't need this functionality so we compile a non-functioning stub version instead, arbgenerator_stubs.c
@@ -2208,6 +2209,7 @@ ifeq ($(USE_INTERNAL_GL4ES),1)
     $(B)/client/gl4es/buffers.o \
     $(B)/client/gl4es/stencil.o \
     $(B)/client/gl4es/blend.o
+endif
 endif
 
 ifeq ($(NEED_OPUS),1)
