@@ -1519,6 +1519,7 @@ ifneq ($(PLATFORM),darwin)
 	@(cd $(B) && zip -r9 ../../$@ $(NAKED_TARGETS))
   endif
 endif
+	@:
 
 makedirs:
 	@$(MKDIR) $(B)/autoupdater
