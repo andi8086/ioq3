@@ -1584,6 +1584,12 @@ ifneq ($(PLATFORM),darwin)
 	@(cd $(B) && zip -r9 ../../$@ $(NAKED_TARGETS))
   endif
 endif
+ifeq ($(PLATFORM),emscripten)
+  ifdef ARCHIVE
+	@(cp code/web/ioquake3.html $(B)/)
+	@(cd $(B) && zip -r9 ../../$@ ioquake3.wasm32.wasm ioquake3.html)
+  endif
+endif
 	@:
 
 makedirs:
