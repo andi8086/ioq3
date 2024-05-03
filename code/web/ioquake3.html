@@ -37,7 +37,8 @@ const assetResponses = [];
 for (const file of files) assetResponses.push(fetch(`${pakPathname}/${file}`).then(r => r.ok ? r.arrayBuffer() : null));
 
 // If buildPath is not specified, try to find a build in one of a few default paths.
-const buildPath = urlParams.get('buildPath');
+let buildPath = urlParams.get('buildPath');
+if (buildPath && !buildPath.endsWith('/')) buildPath += '/';
 const buildPaths = buildPath ? [buildPath] : ['../../build/debug-emscripten-wasm32/', '../../build/release-emscripten-wasm32/', './'];
 const scriptPaths = buildPaths.map(buildPath => buildPath + 'ioquake3.wasm32.js');
 const scriptResponses = await Promise.all(scriptPaths.map(p => fetch(p, {method: 'HEAD'})));
