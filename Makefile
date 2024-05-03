@@ -104,6 +104,23 @@ ARCH=$(COMPILE_ARCH)
 endif
 export ARCH
 
+ifeq ($(findstring /emcc,$(CC)),/emcc)
+  PLATFORM=emscripten
+  ARCH=wasm32
+  BINEXT=.js
+  # Dynamic linking is not supported.
+  USE_RENDERER_DLOPEN=0
+  USE_OPENAL_DLOPEN=0
+  BUILD_GAME_SO=0
+  USE_CURL=0
+  # Would be interesting to try to get the server working via WebRTC data channel (uses UDP).
+  BUILD_SERVER=0
+  # gl4es translates GL 1.1 to ES 2, and Emscripten translates from ES 2 to WebGL.
+  USE_GL4ES=1
+  # In theory gl4es supports GL 2.1, but in practice not really.
+  BUILD_RENDERER_OPENGL2=0
+endif
+
 ifneq ($(PLATFORM),$(COMPILE_PLATFORM))
   CROSS_COMPILING=1
 else
@@ -207,6 +224,10 @@ ifndef USE_FREETYPE
 USE_FREETYPE=0
 endif
 
+ifndef USE_GL4ES
+USE_GL4ES=0
+endif
+
 ifndef USE_INTERNAL_LIBS
 USE_INTERNAL_LIBS=1
 endif
@@ -229,6 +250,10 @@ endif
 
 ifndef USE_INTERNAL_JPEG
 USE_INTERNAL_JPEG=$(USE_INTERNAL_LIBS)
+endif
+
+ifndef USE_INTERNAL_GL4ES
+USE_INTERNAL_GL4ES=$(USE_INTERNAL_LIBS)
 endif
 
 ifndef USE_LOCAL_HEADERS
@@ -275,6 +300,7 @@ OGGDIR=$(MOUNT_DIR)/libogg-1.3.3
 VORBISDIR=$(MOUNT_DIR)/libvorbis-1.3.6
 OPUSDIR=$(MOUNT_DIR)/opus-1.2.1
 OPUSFILEDIR=$(MOUNT_DIR)/opusfile-0.9
+GL4ESDIR=$(MOUNT_DIR)/gl4es
 ZDIR=$(MOUNT_DIR)/zlib
 TOOLSDIR=$(MOUNT_DIR)/tools
 Q3ASMDIR=$(MOUNT_DIR)/tools/asm
@@ -714,7 +740,9 @@ ifdef MINGW
   SHLIBCFLAGS=
   SHLIBLDFLAGS=-shared $(LDFLAGS)
 
-  BINEXT=.exe
+  ifndef BINEXT
+    BINEXT=.exe
+  endif
 
   ifeq ($(CROSS_COMPILING),0)
     TOOLS_BINEXT=.exe
@@ -1063,6 +1091,34 @@ endif #NetBSD
 endif #IRIX
 endif #SunOS
 
+#############################################################################
+# SETUP AND BUILD -- EMSCRIPTEN
+#############################################################################
+ifeq ($(PLATFORM),emscripten)
+  OPTIMIZEVM=-O3
+  OPTIMIZE=$(OPTIMIZEVM) -ffast-math
+  HAVE_VM_COMPILED=false
+  # Some of these warnings may actually be legit problems and should be fixed at some point.
+  BASE_CFLAGS+=-Wno-deprecated-non-prototype -Wno-dangling-else -Wno-implicit-const-int-float-conversion -Wno-misleading-indentation -Wno-format-overflow -Wno-logical-not-parentheses
+  DEBUG_CFLAGS=-g3 -O0 # -fsanitize=address -fsanitize=undefined
+  # Emscripten needs debug flags to be passed to the linker as well
+  DEBUG_LDFLAGS=$(DEBUG_CFLAGS)
+  CLIENT_CFLAGS+=-sUSE_SDL=2
+  CLIENT_LDFLAGS+=\
+    -O3 \
+    -sALLOW_MEMORY_GROWTH \
+    -sEXIT_RUNTIME=1 \
+    -sFULL_ES2=1 \
+    -sSTACK_SIZE=5MB \
+    -sEXPORT_ES6 \
+    -sEXPORT_NAME=ioquake3 \
+    -sUSE_ES6_IMPORT_META \
+    -sEXPORTED_RUNTIME_METHODS=FS,addRunDependency,removeRunDependency
+  BUILD_GAME_SO=0
+  BUILD_GAME_QVM=0
+endif
+
+
 ifndef CC
   CC=gcc
 endif
@@ -1155,6 +1211,14 @@ ifeq ($(USE_CURL),1)
   ifeq ($(USE_CURL_DLOPEN),1)
     CLIENT_CFLAGS += -DUSE_CURL_DLOPEN
   endif
+endif
+
+ifeq ($(USE_GL4ES),1)
+  CLIENT_CFLAGS += -DUSE_GL4ES
+endif
+
+ifeq ($(USE_INTERNAL_GL4ES),1)
+  BASE_CFLAGS += -I$(GL4ESDIR)/include -DNOEGL -DNOX11 -DEGL_NO_X11 -DNO_GBM
 endif
 
 ifeq ($(USE_VOIP),1)
@@ -1408,7 +1472,8 @@ all: debug release
 debug:
 	@$(MAKE) targets B=$(BD) CFLAGS="$(CFLAGS) $(BASE_CFLAGS) $(DEPEND_CFLAGS)" \
 	  OPTIMIZE="$(DEBUG_CFLAGS)" OPTIMIZEVM="$(DEBUG_CFLAGS)" \
-	  CLIENT_CFLAGS="$(CLIENT_CFLAGS)" SERVER_CFLAGS="$(SERVER_CFLAGS)" V=$(V)
+	  CLIENT_CFLAGS="$(CLIENT_CFLAGS)" SERVER_CFLAGS="$(SERVER_CFLAGS)" V=$(V) \
+	  LDFLAGS="$(LDFLAGS) $(DEBUG_LDFLAGS)"
 
 release:
 	@$(MAKE) targets B=$(BR) CFLAGS="$(CFLAGS) $(BASE_CFLAGS) $(DEPEND_CFLAGS)" \
@@ -1525,6 +1590,7 @@ makedirs:
 	@$(MKDIR) $(B)/autoupdater
 	@$(MKDIR) $(B)/client/opus
 	@$(MKDIR) $(B)/client/vorbis
+	@$(MKDIR) $(B)/client/gl4es
 	@$(MKDIR) $(B)/renderergl1
 	@$(MKDIR) $(B)/renderergl2
 	@$(MKDIR) $(B)/renderergl2/glsl
@@ -1874,8 +1940,13 @@ ifdef MINGW
   Q3OBJ += \
     $(B)/client/con_passive.o
 else
+ifeq ($(PLATFORM),emscripten)
+  Q3OBJ += \
+    $(B)/client/con_passive.o
+else
   Q3OBJ += \
     $(B)/client/con_tty.o
+endif
 endif
 
 Q3R2OBJ = \
@@ -2060,6 +2131,83 @@ ifeq ($(ARCH),x86_64)
   Q3OBJ += \
     $(B)/client/snapvector.o \
     $(B)/client/ftola.o
+endif
+
+ifeq ($(USE_INTERNAL_GL4ES),1)
+  # Don't build this file, it has too many local variables and causes the emscripten build to throw an error on load.
+  # We don't need this functionality so we compile a non-functioning stub version instead, arbgenerator_stubs.c
+  #  $(B)/client/gl4es/arbgenerator.o
+
+  Q3OBJ += \
+    $(B)/client/gl4es/arbgenerator_stubs.o \
+    $(B)/client/gl4es/hardext.o \
+    $(B)/client/gl4es/texture_compressed.o \
+    $(B)/client/gl4es/envvars.o \
+    $(B)/client/gl4es/string_utils.o \
+    $(B)/client/gl4es/matheval.o \
+    $(B)/client/gl4es/texture_read.o \
+    $(B)/client/gl4es/depth.o \
+    $(B)/client/gl4es/vertexattrib.o \
+    $(B)/client/gl4es/decompress.o \
+    $(B)/client/gl4es/uniform.o \
+    $(B)/client/gl4es/raster.o \
+    $(B)/client/gl4es/queries.o \
+    $(B)/client/gl4es/gl_lookup.o \
+    $(B)/client/gl4es/matvec.o \
+    $(B)/client/gl4es/matrix.o \
+    $(B)/client/gl4es/listrl.o \
+    $(B)/client/gl4es/texture_params.o \
+    $(B)/client/gl4es/glstate.o \
+    $(B)/client/gl4es/enable.o \
+    $(B)/client/gl4es/texture_3d.o \
+    $(B)/client/gl4es/pixel.o \
+    $(B)/client/gl4es/shaderconv.o \
+    $(B)/client/gl4es/framebuffers.o \
+    $(B)/client/gl4es/logs.o \
+    $(B)/client/gl4es/drawing.o \
+    $(B)/client/gl4es/list.o \
+    $(B)/client/gl4es/arbhelper.o \
+    $(B)/client/gl4es/pointsprite.o \
+    $(B)/client/gl4es/debug.o \
+    $(B)/client/gl4es/arbconverter.o \
+    $(B)/client/gl4es/texenv.o \
+    $(B)/client/gl4es/eval.o \
+    $(B)/client/gl4es/init.o \
+    $(B)/client/gl4es/gl4es.o \
+    $(B)/client/gl4es/program.o \
+    $(B)/client/gl4es/shader_hacks.o \
+    $(B)/client/gl4es/fpe_cache.o \
+    $(B)/client/gl4es/getter.o \
+    $(B)/client/gl4es/line.o \
+    $(B)/client/gl4es/hint.o \
+    $(B)/client/gl4es/samplers.o \
+    $(B)/client/gl4es/fpe.o \
+    $(B)/client/gl4es/directstate.o \
+    $(B)/client/gl4es/listdraw.o \
+    $(B)/client/gl4es/face.o \
+    $(B)/client/gl4es/array.o \
+    $(B)/client/gl4es/preproc.o \
+    $(B)/client/gl4es/blit.o \
+    $(B)/client/gl4es/stack.o \
+    $(B)/client/gl4es/fog.o \
+    $(B)/client/gl4es/gles.o \
+    $(B)/client/gl4es/glstub.o \
+    $(B)/client/gl4es/gl4eswraps.o \
+    $(B)/client/gl4es/stubs.o \
+    $(B)/client/gl4es/render.o \
+    $(B)/client/gl4es/texture.o \
+    $(B)/client/gl4es/light.o \
+    $(B)/client/gl4es/build_info.o \
+    $(B)/client/gl4es/loader.o \
+    $(B)/client/gl4es/fpe_shader.o \
+    $(B)/client/gl4es/shader.o \
+    $(B)/client/gl4es/texgen.o \
+    $(B)/client/gl4es/planes.o \
+    $(B)/client/gl4es/arbparser.o \
+    $(B)/client/gl4es/oldprogram.o \
+    $(B)/client/gl4es/buffers.o \
+    $(B)/client/gl4es/stencil.o \
+    $(B)/client/gl4es/blend.o
 endif
 
 ifeq ($(NEED_OPUS),1)
@@ -2800,6 +2948,18 @@ $(B)/client/opus/%.o: $(OPUSDIR)/silk/float/%.c
 	$(DO_CC)
 
 $(B)/client/%.o: $(OPUSFILEDIR)/src/%.c
+	$(DO_CC)
+
+$(B)/client/gl4es/%.o: $(GL4ESDIR)/src/gl/%.c
+	$(DO_CC)
+
+$(B)/client/gl4es/%.o: $(GL4ESDIR)/src/gl/math/%.c
+	$(DO_CC)
+
+$(B)/client/gl4es/%.o: $(GL4ESDIR)/src/gl/wrap/%.c
+	$(DO_CC)
+
+$(B)/client/gl4es/%.o: $(GL4ESDIR)/src/glx/%.c
 	$(DO_CC)
 
 $(B)/client/%.o: $(ZDIR)/%.c

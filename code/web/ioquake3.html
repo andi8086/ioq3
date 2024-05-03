@@ -1,0 +1,71 @@
+<!DOCTYPE html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ioquake3 Emscripten demo</title>
+<style>
+html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: rgb(0, 0, 0); display:flex; align-items: center; justify-content: center; }
+canvas { max-width: 100%; max-height: 100%; min-width: 100%; min-height: 100%; object-fit: contain; }
+</style>
+
+<canvas id=canvas></canvas>
+
+<script type=module>
+if (window.location.protocol === 'file:') throw new Error('Unfortunately browser security restrictions prevent loading wasm from a file: URL. This file must be loaded from a web server. The easiest way to do this is probably to use Python\'s built-in web server by running `python3 -m http.server` in the top level ioq3 directory and then navigating to http://localhost:8000/code/web/ioquake3.html in your web browser. Note that you will also need to serve the game asset files, either on the same server or a different one.');
+
+// First set up the command line arguments and the Emscripten filesystem.
+const urlParams = new URLSearchParams(window.location.search);
+let pakPathname = urlParams.get('pakPathname');
+if (!pakPathname) throw new Error('\n\nYou need to specify a pakPathname query parameter in the URL. This needs to be a relative or absolute URL to a directory (e.g. ./baseq3 or https://foo.com/bar/baseq3) on a web server containing asset files (e.g. pak0.pk3). The asset files will be placed in the Emscripten virtual filesystem at ~/.q3a/[your_directory_name], where your_directory_name is the basename of the URL you provided (e.g. baseq3). For convenience, this directory name will also be provided as an argument to the game in the form "+set fs_game [your_directory_name]".\n\nYou should also specify an args URL parameter containing additional command line arguments you want to provide to the game. Be warned however that "+" needs to be encoded as "%2b" in URLs or it will be stripped.\n');
+const pakBasename = pakPathname?.substring(pakPathname.lastIndexOf('/') + 1);
+let generatedArguments = `
+    +set net_enabled 0
+    +set r_mode -2
+`;
+if (pakBasename && pakBasename.indexOf(':') === -1) {
+    generatedArguments += ` +set fs_game ${pakBasename} `;
+} else {
+    pakBasename = 'baseq3';
+}
+// Note that unfortunately "+" needs to be encoded as "%2b" in URL query strings or it will be stripped by the browser.
+let queryArgs = urlParams.get('args');
+if (queryArgs) generatedArguments += ` ${queryArgs} `;
+
+// Start fetching all the asset files.
+// There's no standard way to list files in a directory on the web so we just have to hardcode a list of files that might be there.
+const files = ['q3key', 'q3config.cfg', 'autoexec.cfg'];
+const MAX_PAK_FILES = 8;
+for (let i = MAX_PAK_FILES + 1; i >= 0; i--) files.push(`pak${i}.pk3`);
+const assetResponses = [];
+for (const file of files) assetResponses.push(fetch(`${pakPathname}/${file}`).then(r => r.ok ? r.arrayBuffer() : null));
+
+// If buildPath is not specified, try to find a build in one of a few default paths.
+const buildPath = urlParams.get('buildPath');
+const buildPaths = buildPath ? [buildPath] : ['../../build/debug-emscripten-wasm32/', '../../build/release-emscripten-wasm32/', './'];
+const scriptPaths = buildPaths.map(buildPath => buildPath + 'ioquake3.wasm32.js');
+const scriptResponses = await Promise.all(scriptPaths.map(p => fetch(p, {method: 'HEAD'})));
+const validBuilds = scriptResponses.filter(r => r.ok).length;
+if (validBuilds === 0) throw new Error(`Didn't find any wasm builds. Run \`emmake make debug\` to build one, or use the buildPath query parameter to specify a directory containing ioquake3.wasm32.[js,wasm], e.g. ?buildPath=../../build/debug-emscripten-wasm32/`);
+if (validBuilds > 1) throw new Error(`Found multiple valid builds at the following paths: [${buildPaths.filter((path, i)=>scriptResponses[i].ok)}]. Please specify which one to run by adding a buildPath query parameter to the URL, e.g. ?buildPath=../../build/debug-emscripten-wasm32/`);
+const selectedScript = scriptPaths[scriptResponses.findIndex(r => r.ok)];
+
+const ioquake3 = (await import(selectedScript)).default;
+ioquake3({
+    canvas: canvas,
+    arguments: generatedArguments.trim().split(/\s+/),
+    preRun: [async (module) => {
+        // Add the fetched asset files to the Emscripten virtual filesystem.
+        module.addRunDependency('setup-ioq3-filesystem');
+        const buffers = await Promise.all(assetResponses);
+        if (!buffers[files.indexOf(`pak0.pk3`)])
+            throw new Error(`pak0.pk3 not found at ${pakPathname}/pak0.pk3.`);
+        if (buffers[files.indexOf(`pak${MAX_PAK_FILES+1}.pk3`)])
+            throw new Error(`If you want to load more than ${MAX_PAK_FILES} pak files, you need to modify the code in prerun-setup-filesystem.js.`);
+        module.FS.mkdirTree(`/home/web_user/.q3a/${pakBasename}`);
+        for (let i = files.length - 1; i >= 0; i--) {
+            if (buffers[i]) {
+                console.log(`Writing ${files[i]} to Emscripten virtual filesystem at ~/.q3a/${pakBasename}/${files[i]}`);
+                module.FS.writeFile(`/home/web_user/.q3a/${pakBasename}/${files[i]}`, new Uint8Array(buffers[i]));
+            }
+        }
+        module.removeRunDependency('setup-ioq3-filesystem');
+    }],
+});
+</script>

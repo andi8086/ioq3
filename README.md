@@ -31,6 +31,7 @@ Some of the major features currently implemented are:
   * Multiuser support on Windows systems (user specific game data
     is stored in "%APPDATA%\Quake3")
   * PNG support
+  * Web support via Emscripten and GL4ES
   * Many, many bug fixes
 
 The map editor and associated compiling tools are not included. We suggest you
@@ -98,6 +99,22 @@ For macOS, building a Universal Binary 2 (macOS 10.9+, arm64, x86_64)
   4. Copy the resulting ioquake3.app in /build/release-darwin-universal2
      to your /Applications/ioquake3 folder.
 
+For Web, building with Emscripten
+  1. Follow the installation instructions for the Emscripten SDK including
+     setting up the environment with emsdk_env.
+  2. Run `emmake make debug` (or release, but if you do both then you will
+     need to pass an extra URL parameter to the HTML file to select the
+     build you want).
+  3. Start a web server that serves this directory and also a directory
+     containing your game data files (baseq3, missionpack, etc).
+     `python3 -m http.server` is an easy default that you may already have
+     installed.
+  4. Open code/web/ioquake3.html?pakPathname=/path/to/your/baseq3 in a web
+     browser. Open the developer console to see errors and warnings.
+  5. Debugging the C code is possible using a Chrome extension. For details
+     see https://developer.chrome.com/blog/wasm-debugging-2020
+
+
 Installation, for *nix
   1. Set the COPYDIR variable in the shell to be where you installed Quake 3
      to. By default it will be /usr/local/games/quake3 if you haven't set it.
@@ -151,6 +168,7 @@ Makefile.local:
   USE_INTERNAL_OGG     - build and link against internal ogg library
   USE_INTERNAL_OPUS    - build and link against internal opus/opusfile libraries
   USE_INTERNAL_VORBIS  - build and link against internal Vorbis library
+  USE_INTERNAL_GL4ES   - build and link against internal GL4ES library
   USE_LOCAL_HEADERS    - use headers local to ioq3 instead of system ones
   DEBUG_CFLAGS         - C compiler flags to use for building debug version
   COPYDIR              - the target installation directory

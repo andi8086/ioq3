@@ -27,6 +27,13 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #	include <SDL.h>
 #endif
 
+#ifdef USE_GL4ES
+#include <gl4esinit.h>
+#define ioq3_GetProcAddress gl4es_GetProcAddress
+#else
+#define ioq3_GetProcAddress SDL_GL_GetProcAddress
+#endif
+
 #include "tr_local.h"
 #include "tr_dsa.h"
 
@@ -51,7 +58,7 @@ void GLimp_InitExtraExtensions(void)
 #undef GLE
 
 	// GL function loader, based on https://gist.github.com/rygorous/16796a0c876cf8a5f542caddb55bce8a
-#define GLE(ret, name, ...) qgl##name = (name##proc *) SDL_GL_GetProcAddress("gl" #name);
+#define GLE(ret, name, ...) qgl##name = (name##proc *) ioq3_GetProcAddress("gl" #name);
 
 	// OpenGL 1.5 - GL_ARB_occlusion_query
 	glRefConfig.occlusionQuery = qtrue;

@@ -35,6 +35,14 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../sys/sys_local.h"
 #include "sdl_icon.h"
 
+#ifdef USE_GL4ES
+#include <gl4esinit.h>
+#define ioq3_GetProcAddress gl4es_GetProcAddress
+#else
+#define ioq3_GetProcAddress SDL_GL_GetProcAddress
+#endif
+
+
 typedef enum
 {
 	RSERR_OK,
@@ -244,7 +252,7 @@ static qboolean GLimp_GetProcAddresses( qboolean fixedFunction ) {
 #ifdef __SDL_NOGETPROCADDR__
 #define GLE( ret, name, ... ) qgl##name = gl#name;
 #else
-#define GLE( ret, name, ... ) qgl##name = (name##proc *) SDL_GL_GetProcAddress("gl" #name); \
+#define GLE( ret, name, ... ) qgl##name = (name##proc *) ioq3_GetProcAddress("gl" #name); \
 	if ( qgl##name == NULL ) { \
 		ri.Printf( PRINT_ALL, "ERROR: Missing OpenGL function %s\n", "gl" #name ); \
 		success = qfalse; \
@@ -381,6 +389,10 @@ static int GLimp_SetMode(int mode, qboolean fullscreen, qboolean noborder, qbool
 	int x = SDL_WINDOWPOS_UNDEFINED, y = SDL_WINDOWPOS_UNDEFINED;
 
 	ri.Printf( PRINT_ALL, "Initializing OpenGL display\n");
+
+#if defined(USE_GL4ES)
+	initialize_gl4es();
+#endif
 
 	if ( r_allowResize->integer )
 		flags |= SDL_WINDOW_RESIZABLE;
@@ -885,9 +897,9 @@ static void GLimp_InitExtensions( qboolean fixedFunction )
 		{
 			if ( r_ext_multitexture->value )
 			{
-				qglMultiTexCoord2fARB = SDL_GL_GetProcAddress( "glMultiTexCoord2fARB" );
-				qglActiveTextureARB = SDL_GL_GetProcAddress( "glActiveTextureARB" );
-				qglClientActiveTextureARB = SDL_GL_GetProcAddress( "glClientActiveTextureARB" );
+				qglMultiTexCoord2fARB = ioq3_GetProcAddress( "glMultiTexCoord2fARB" );
+				qglActiveTextureARB = ioq3_GetProcAddress( "glActiveTextureARB" );
+				qglClientActiveTextureARB = ioq3_GetProcAddress( "glClientActiveTextureARB" );
 
 				if ( qglActiveTextureARB )
 				{
@@ -923,8 +935,8 @@ static void GLimp_InitExtensions( qboolean fixedFunction )
 			if ( r_ext_compiled_vertex_array->value )
 			{
 				ri.Printf( PRINT_ALL, "...using GL_EXT_compiled_vertex_array\n" );
-				qglLockArraysEXT = ( void ( APIENTRY * )( GLint, GLint ) ) SDL_GL_GetProcAddress( "glLockArraysEXT" );
-				qglUnlockArraysEXT = ( void ( APIENTRY * )( void ) ) SDL_GL_GetProcAddress( "glUnlockArraysEXT" );
+				qglLockArraysEXT = ( void ( APIENTRY * )( GLint, GLint ) ) ioq3_GetProcAddress( "glLockArraysEXT" );
+				qglUnlockArraysEXT = ( void ( APIENTRY * )( void ) ) ioq3_GetProcAddress( "glUnlockArraysEXT" );
 				if (!qglLockArraysEXT || !qglUnlockArraysEXT)
 				{
 					ri.Error (ERR_FATAL, "bad getprocaddress");
