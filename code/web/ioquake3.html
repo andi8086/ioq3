@@ -58,7 +58,7 @@ ioquake3({
         if (!buffers[files.indexOf(`pak0.pk3`)])
             throw new Error(`pak0.pk3 not found at ${pakPathname}/pak0.pk3.`);
         if (buffers[files.indexOf(`pak${MAX_PAK_FILES+1}.pk3`)])
-            throw new Error(`If you want to load more than ${MAX_PAK_FILES} pak files, you need to modify the code in prerun-setup-filesystem.js.`);
+            throw new Error(`If you want to load more than ${MAX_PAK_FILES} pak files, you need to modify the code in ioquake3.html.`);
         module.FS.mkdirTree(`/home/web_user/.q3a/${pakBasename}`);
         for (let i = files.length - 1; i >= 0; i--) {
             if (buffers[i]) {
