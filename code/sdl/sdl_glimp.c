@@ -37,6 +37,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #ifdef USE_GL4ES
 #include <gl4esinit.h>
+#include <gl4eshint.h>
 #define ioq3_GetProcAddress gl4es_GetProcAddress
 #else
 #define ioq3_GetProcAddress SDL_GL_GetProcAddress
@@ -392,6 +393,10 @@ static int GLimp_SetMode(int mode, qboolean fullscreen, qboolean noborder, qbool
 
 #if defined(USE_GL4ES)
 	initialize_gl4es();
+	// Disable this broken optimization GL4ES tries to do. It causes the text
+	// in the console to be invisible as well as the mouse pointer in some
+	// menu screens.
+	((void (APIENTRY *)(GLenum, GLenum))gl4es_GetProcAddress("glHint"))(GL_BEGINEND_HINT_GL4ES, 0);
 #endif
 
 	if ( r_allowResize->integer )
