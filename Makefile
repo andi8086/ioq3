@@ -1113,7 +1113,8 @@ ifeq ($(PLATFORM),emscripten)
     -sEXPORT_ES6 \
     -sEXPORT_NAME=ioquake3 \
     -sUSE_ES6_IMPORT_META \
-    -sEXPORTED_RUNTIME_METHODS=FS,addRunDependency,removeRunDependency
+    -sEXPORTED_RUNTIME_METHODS=FS,addRunDependency,removeRunDependency \
+    -sTOTAL_MEMORY=4GB
   BUILD_GAME_SO=0
   BUILD_GAME_QVM=0
 endif
